@@ -6,6 +6,7 @@
 #include "mlgetopt.h"
 
 #include <stdio.h>
+#include <time.h>
 
   typedef FT_Vector  Vec2;
   typedef FT_BBox    Box;
@@ -30,37 +31,107 @@
 
     FT_Int    spread;
 
-    char*     header;
+    FT_Int    x_offset;
+
+    FT_Int    y_offset;
+
+    FT_Bool   nearest_filtering;
+
+    FT_Int    optimization_mode;
+
+    float     generation_time;
+
+    FT_Bool   reconstruct;
+
+    /* params for reconstruction */
+
+    float     width;
+    float     edge;
 
   } Status;
 
   static FTDemo_Handle*   handle   = NULL;
   static FTDemo_Display*  display  = NULL;
 
-  static Status status = { NULL, 64, 0, 2, 8, NULL };
+  static Status status = { 
+    /* face              */ NULL,
+    /* ptsize            */ 256,
+    /* glyph_index       */ 0,
+    /* scale             */ 1,
+    /* spread            */ 4,
+    /* x_offset          */ 0,
+    /* y_offset          */ 0,
+    /* nearest_filtering */ 0,
+    /* optimization_mode */ 0,
+    /* generation_time   */ 0.0f,
+    /* reconstruct       */ 0,
+    /* width             */ 0.0f,
+    /* edge              */ 0.4f
+  };
 
   static void
   write_header()
   {
-    static char header_string[512];
-
+    static char   header_string[512];
+    static char*  optimization_mode = NULL;
 
     sprintf( header_string, "Glyph Index: %d, Pt Size: %d, Spread: %d, Scale: %d",
              status.glyph_index, status.ptsize, status.spread, status.scale );
-    status.header = header_string;
+    grWriteCellString( display->bitmap, 0, 0, header_string, display->fore_color );
+
+    sprintf( header_string, "Position Offset: %d,%d", status.x_offset, status.y_offset );
+    grWriteCellString( display->bitmap, 0, 1 * HEADER_HEIGHT, header_string, display->fore_color );
+
+    switch ( status.optimization_mode ) {
+    case 1:
+      optimization_mode = "Bounding Box";
+      break;
+    case 2:
+      optimization_mode = "Subdivision";
+      break;
+    case 3:
+      optimization_mode = "Coarse Grid";
+      break;
+    default:
+      optimization_mode = "None";
+      break;
+    }
+
+    sprintf( header_string, "Optimization: %s [SDF Generated in: %.0f ms]", optimization_mode, status.generation_time );
+    grWriteCellString( display->bitmap, 0, 2 * HEADER_HEIGHT, header_string, display->fore_color );
+
+    sprintf( header_string, "Filtering: %s, View: %s", status.nearest_filtering ? "Nearest" : "Bilinear",
+                                                       status.reconstruct ? "Reconstructing": "Raw" );
+    grWriteCellString( display->bitmap, 0, 3 * HEADER_HEIGHT, header_string, display->fore_color );
+
+    if ( status.reconstruct )
+    {
+      sprintf( header_string, "Width: %.2f, Edge: %.2f", status.width, status.edge );
+      grWriteCellString( display->bitmap, 0, 4 * HEADER_HEIGHT, header_string, display->fore_color );
+    }
   }
 
   static FT_Error
   event_font_update()
   {
     FT_Error  error = FT_Err_Ok;
-    
+    clock_t   start, end;
 
     FT_CALL( FT_Property_Set( handle->library, "sdf", "spread", &status.spread ) );
+    FT_CALL( FT_Property_Set( handle->library, "sdf", "optimization", &status.optimization_mode ) );
 
     FT_CALL( FT_Set_Pixel_Sizes( status.face, 0, status.ptsize ) );
     FT_CALL( FT_Load_Glyph( status.face, status.glyph_index, FT_LOAD_DEFAULT ) );
+
+    start = clock();
+
     FT_CALL( FT_Render_Glyph( status.face->glyph, FT_RENDER_MODE_SDF ) );
+
+    end = clock();
+
+    status.generation_time = ( (float)( end - start ) / (float)CLOCKS_PER_SEC ) * 1000.0f;
+
+    printf( "Generation Time: %.0f ms\n", status.generation_time );
 
   Exit:
     return error;
@@ -87,6 +158,7 @@
   {
     grEvent  event;
     int      ret = 0;
+    int      speed = 10 * status.scale;
 
     grListenSurface( display->surface, 0, &event );
 
@@ -119,13 +191,13 @@
         status.ptsize = 8;
       event_font_update();
       break;
-    case grKEY( 'w' ):
+    case grKEY( 'o' ):
       status.spread++;
       if ( status.spread > 32 )
         status.spread = 32;
       event_font_update();
       break;
-    case grKEY( 's' ):
+    case grKEY( 'l' ):
       status.spread--;
       if ( status.spread < 2 )
         status.spread = 2;
@@ -139,11 +211,72 @@
       status.glyph_index--;
       event_font_update();
       break;
+    case grKEY( 'f' ):
+      status.nearest_filtering = !status.nearest_filtering;
+      break;
+    case grKEY( 'r' ):
+      status.reconstruct = !status.reconstruct;
+      break;
+    case grKEY( 'i' ):
+      status.width += 0.5f;
+      break;
+    case grKEY( 'k' ):
+      status.width -= 0.5f;
+      break;
+    case grKEY( 'u' ):
+      status.edge += 0.2f;
+      break;
+    case grKEY( 'j' ):
+      status.edge -= 0.2f;
+      break;
+    case grKEY( 'd' ):
+      status.x_offset += speed;
+      break;
+    case grKEY( 'a' ):
+      status.x_offset -= speed;
+      break;
+    case grKEY( 's' ):
+      status.y_offset -= speed;
+      break;
+    case grKEY( 'w' ):
+      status.y_offset += speed;
+      break;
+    case grKey1:
+      status.optimization_mode = 0;
+      event_font_update();
+      break;
+    case grKey2:
+      status.optimization_mode = 1;
+      event_font_update();
+      break;
+    case grKey3:
+      status.optimization_mode = 2;
+      event_font_update();
+      break;
+    case grKey4:
+      status.optimization_mode = 3;
+      event_font_update();
+      break;
     default:
         break;
     }
 
     return ret;
+  }
+
+  float clamp(float x, float lowerlimit, float upperlimit) {
+    if (x < lowerlimit)
+      x = lowerlimit;
+    if (x > upperlimit)
+      x = upperlimit;
+    return x;
+  }
+
+  float smoothstep(float edge0, float edge1, float x) {
+    // Scale, bias and saturate x to 0..1 range
+    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0); 
+    // Evaluate polynomial
+    return x * x * (3 - 2 * x);
   }
 
   static FT_Error
@@ -166,6 +299,11 @@
     draw_region.xMax = center.x + ( bitmap->width * status.scale) / 2;
     draw_region.yMin = center.y - ( bitmap->rows  * status.scale) / 2;
     draw_region.yMax = center.y + ( bitmap->rows  * status.scale) / 2;
+
+    draw_region.xMin += status.x_offset;
+    draw_region.xMax += status.x_offset;
+    draw_region.yMin += status.y_offset;
+    draw_region.yMax += status.y_offset;
 
     sample_region.xMin = 0;
     sample_region.xMax = bitmap->width * status.scale;
@@ -203,21 +341,96 @@
       for ( FT_Int i = draw_region.xMin, x = sample_region.xMin; i < draw_region.xMax; i++, x++ )
       {
         FT_UInt   display_index = j * display->bitmap->width + i;
-        FT_UInt   bitmap_index  = ( y / status.scale ) * bitmap->width + ( x / status.scale );
-        FT_Short  pixel_value   = buffer[bitmap_index];
+        float     min_dist;
+
+        if ( status.nearest_filtering )
+        {
+          FT_UInt   bitmap_index  = ( y / status.scale ) * bitmap->width + ( x / status.scale );
+          FT_Short  pixel_value   = buffer[bitmap_index];
+          
+          
+          min_dist = (float)pixel_value / 1024.0f;
+        }
+        else
+        {
+          /* for simplicity use floats */
+          float  bi_x;
+          float  bi_y;
+
+          float  nbi_x;
+          float  nbi_y;
+
+          int    indc[4]; /* [0,0] [0,1] [1,0] [1,1] */
+          float  dist[4];
+
+          float  m1, m2;
+
+          bi_x = (float)x / (float)status.scale;
+          bi_y = (float)y / (float)status.scale;
+
+          nbi_x = bi_x - (int)bi_x;
+          nbi_y = bi_y - (int)bi_y;
+
+          indc[0] = (int)bi_y * bitmap->width + (int)bi_x;
+          indc[1] = ( (int)bi_y + 1 ) * bitmap->width + (int)bi_x;
+          indc[2] = (int)bi_y * bitmap->width + (int)bi_x + 1;
+          indc[3] = ( (int)bi_y + 1 ) * bitmap->width + (int)bi_x + 1;
+
+          dist[0] = (float)buffer[indc[0]] / 1024.0f;
+
+          if ( indc[1] >= bitmap->width * bitmap->rows )
+            dist[1] = -status.spread;
+          else
+            dist[1] = (float)buffer[indc[1]] / 1024.0f;
+
+          if ( indc[2] >= bitmap->width * bitmap->rows )
+            dist[2] = -status.spread;
+          else
+            dist[2] = (float)buffer[indc[2]] / 1024.0f;
+
+          if ( indc[3] >= bitmap->width * bitmap->rows )
+            dist[3] = -status.spread;
+          else
+            dist[3] = (float)buffer[indc[3]] / 1024.0f;
+
+          m1 = dist[0] * ( 1.0f - nbi_y ) + dist[1] * nbi_y;
+          m2 = dist[2] * ( 1.0f - nbi_y ) + dist[3] * nbi_y;
+
+          min_dist = ( 1.0f - nbi_x ) * m1 +
+                       ( nbi_x ) * m2;
+        }
 
 
-        pixel_value = pixel_value < 0 ? -pixel_value : pixel_value;
-        pixel_value /= ( 4 * status.spread );
-        pixel_value = 255 - pixel_value;
+        if ( status.reconstruct )
+        {
+          float alpha;
 
-        if ( pixel_value < 0 ) pixel_value = 0;
-        if ( pixel_value > 255 ) pixel_value = 255;
 
-        display_index *= 3;
-        display->bitmap->buffer[display_index + 0] = pixel_value;
-        display->bitmap->buffer[display_index + 1] = pixel_value;
-        display->bitmap->buffer[display_index + 2] = pixel_value;
+          alpha  = 1.0f - smoothstep( status.width, status.width + status.edge, -min_dist );
+          alpha *= 255;
+
+          display_index *= 3;
+          display->bitmap->buffer[display_index + 0] = (unsigned char)alpha;
+          display->bitmap->buffer[display_index + 1] = (unsigned char)alpha;
+          display->bitmap->buffer[display_index + 2] = (unsigned char)alpha;
+        }
+        else
+        {
+          float final_dist = min_dist;
+
+
+          /* for display purposes */
+          final_dist = final_dist < 0 ? -final_dist : final_dist;
+          final_dist /= (float)status.spread;
+
+          final_dist = 1.0f - final_dist;
+          final_dist *= 255;
+
+          display_index *= 3;
+          display->bitmap->buffer[display_index + 0] = (unsigned char)final_dist;
+          display->bitmap->buffer[display_index + 1] = (unsigned char)final_dist;
+          display->bitmap->buffer[display_index + 2] = (unsigned char)final_dist;
+        }
       }
     }
 
@@ -228,7 +441,8 @@
   main( int     argc,
         char**  argv )
   {
-    FT_Error  error = FT_Err_Ok;
+    FT_Error  error  = FT_Err_Ok;
+	int       flip_y = 0;
 
 
     if ( argc != 3 )
@@ -245,6 +459,11 @@
       printf( "Failed to create FTDemo_Handle\n" );
       goto Exit;
     }
+
+	#ifdef __linux__
+	  flip_y = 1;
+	  FT_CALL( FT_Property_Set( handle->library, "sdf", "flip_y", &flip_y ) );
+	#endif
 
     display = FTDemo_Display_New( NULL, "800x600" );
 
@@ -267,9 +486,6 @@
       draw();
 
       write_header();
-
-      if ( status.header )
-        grWriteCellString( display->bitmap, 0, 0, status.header, display->fore_color );
 
       grRefreshSurface( display->surface );
     } while ( !Process_Event() );
