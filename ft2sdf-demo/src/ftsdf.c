@@ -176,8 +176,7 @@
     grLn();
     grWriteln( "  b                  : Toggle between bitmap/outline to be used for generating" );
     grLn();
-    grWriteln( "  z                  : Zoom/Scale UP" );
-    grWriteln( "  x                  : Zoom/Scale DOWN" );
+    grWriteln( "  z, x               : Zoom/Scale Up and Down" );
     grLn();
     grWriteln( "  Up, Down Arrow     : Adjust glyph's point size by 1" );
     grWriteln( "  PgUp, PgDn         : Adjust glyph's point size by 25" );
@@ -544,6 +543,12 @@
       printf( "Failed to create FTDemo_Display\n" );
       goto Exit;
     }
+
+#ifdef __linux__
+    int flip_y = 1;
+	FT_CALL( FT_Property_Set( handle->library, "sdf", "flip_y", &flip_y ) );
+	FT_CALL( FT_Property_Set( handle->library, "bsdf", "flip_y", &flip_y ) );
+#endif
 
     grSetTitle( display->surface, "Signed Distance Field Viewer" );
     event_color_change();
