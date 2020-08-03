@@ -14,7 +14,7 @@
   #define FT_CALL(X)\
     error = X;\
     if (error != FT_Err_Ok) {\
-        printf("FreeType error: %s [LINE: %d, FILE: %s]",\
+        printf("FreeType error: %s [LINE: %d, FILE: %s]\n",\
           FT_Error_String(error), __LINE__, __FILE__);\
         goto Exit;\
     }
@@ -43,6 +43,8 @@
 
     FT_Bool   reconstruct;
 
+    FT_Bool   use_bitmap;
+
     /* params for reconstruction */
 
     float     width;
@@ -62,9 +64,10 @@
     /* x_offset          */ 0,
     /* y_offset          */ 0,
     /* nearest_filtering */ 0,
-    /* optimization_mode */ 0,
+    /* optimization_mode */ 2,
     /* generation_time   */ 0.0f,
     /* reconstruct       */ 0,
+    /* use_bitmap        */ 0,
     /* width             */ 0.0f,
     /* edge              */ 0.4f
   };
@@ -97,7 +100,8 @@
       break;
     }
 
-    sprintf( header_string, "Optimization: %s [SDF Generated in: %.0f ms]", optimization_mode, status.generation_time );
+    sprintf( header_string, "Optimization: %s [SDF Generated in: %.0f ms, From: %s]", optimization_mode, status.generation_time,
+             status.use_bitmap ? "Bitmap" : "Outline" );
     grWriteCellString( display->bitmap, 0, 2 * HEADER_HEIGHT, header_string, display->fore_color );
 
     sprintf( header_string, "Filtering: %s, View: %s", status.nearest_filtering ? "Nearest" : "Bilinear",
@@ -117,6 +121,7 @@
     FT_Error  error = FT_Err_Ok;
     clock_t   start, end;
 
+    FT_CALL( FT_Property_Set( handle->library, "bsdf", "spread", &status.spread ) );
     FT_CALL( FT_Property_Set( handle->library, "sdf", "spread", &status.spread ) );
     FT_CALL( FT_Property_Set( handle->library, "sdf", "optimization", &status.optimization_mode ) );
 
@@ -125,6 +130,8 @@
 
     start = clock();
 
+    if ( status.use_bitmap )
+      FT_CALL( FT_Render_Glyph( status.face->glyph, FT_RENDER_MODE_NORMAL ) );
     FT_CALL( FT_Render_Glyph( status.face->glyph, FT_RENDER_MODE_SDF ) );
 
     end = clock();
@@ -140,17 +147,69 @@
   static void
   event_color_change()
   {
-    static int     i = 0;
-    unsigned char  r = i & 2 ? 0xff : 0;
-    unsigned char  g = i & 4 ? 0xff : 0;
-    unsigned char  b = i & 1 ? 0xff : 0;
+    display->back_color = grFindColor( display->bitmap,  0,  0,  0, 0xff );
+    display->fore_color = grFindColor( display->bitmap, 255, 255, 255, 0xff );
+    display->warn_color = grFindColor( display->bitmap,  0, 255, 255, 0xff );
+  }
 
+  static void
+  event_help()
+  {
+    char     buffer[512];
+    grEvent  dummy;
 
-    display->back_color = grFindColor( display->bitmap,  r,  g,  b, 0xff );
-    display->fore_color = grFindColor( display->bitmap, ~r, ~g, ~b, 0xff );
-    display->warn_color = grFindColor( display->bitmap,  r, ~g, ~b, 0xff );
+    display->back_color = grFindColor( display->bitmap, 30, 30, 30, 0xff );
+    FTDemo_Display_Clear( display );
+    display->back_color = grFindColor( display->bitmap,  0,  0,  0, 0xff );
 
-    i++;
+    grSetLineHeight( 10 );
+    grGotoxy( 0, 0 );
+    grSetMargin( 2, 1 );
+    grGotobitmapColor( display->bitmap, 204, 153, 204, 255 );
+
+    grWriteln( "Signed Distnace Field Viewer" );
+    grLn();
+    grWriteln( "Use the following keys:" );
+    grWriteln( "-----------------------" );
+    grLn();
+    grWriteln( "  F1 or ? or /       : display this help screen" );
+    grLn();
+    grWriteln( "  b                  : Toggle between bitmap/outline to be used for generating" );
+    grLn();
+    grWriteln( "  z                  : Zoom/Scale UP" );
+    grWriteln( "  x                  : Zoom/Scale DOWN" );
+    grLn();
+    grWriteln( "  Up, Down Arrow     : Adjust glyph's point size by 1" );
+    grWriteln( "  PgUp, PgDn         : Adjust glyph's point size by 25" );
+    grLn();
+    grWriteln( "  Left, Right Arrow  : Adjust glyph index by 1" );
+    grWriteln( "  F5, F6             : Adjust glyph index by 50" );
+    grWriteln( "  F7, F8             : Adjust glyph index by 500" );
+    grLn();
+    grWriteln( "  o, l               : Adjust spread size by 1" );
+    grLn();
+    grWriteln( "  w, s               : Move glyph Up/Down" );
+    grWriteln( "  a, d               : Move glyph Left/right" );
+    grLn();
+    grWriteln( "  f                  : Toggle between bilinear/nearest filtering" );
+    grLn();
+    grWriteln( "Optimization Modes" );
+    grWriteln( "------------------" );
+    grWriteln( "  1                  : No Optimization" );
+    grWriteln( "  2                  : Bounding Box" );
+    grWriteln( "  3                  : Subdivision" );
+    grWriteln( "  4                  : Coarse Grid" );
+    grLn();
+    grWriteln( "Reconstructing Image from SDF" );
+    grWriteln( "-----------------------------" );
+    grWriteln( "  r                  : Toggle between reconstruction/raw view" );
+    grWriteln( "  i, k               : Adjust width by 1 (makes the text bolder/thinner)" );
+    grWriteln( "  u, j               : Adjust edge by 1 (makes the text smoother/sharper)" );
+    grLn();
+    grWriteln( "press any key to exit this help screen" );
+
+    grRefreshSurface( display->surface );
+    grListenSurface( display->surface, gr_event_key, &dummy );
   }
 
   static int
@@ -203,12 +262,26 @@
         status.spread = 2;
       event_font_update();
       break;
+    case grKeyF8:
+      status.glyph_index += 450;
+    case grKeyF6:
+      status.glyph_index += 49;
     case grKeyRight:
       status.glyph_index++;
       event_font_update();
       break;
+    case grKeyF7:
+      status.glyph_index -= 450;
+    case grKeyF5:
+      status.glyph_index -= 49;
     case grKeyLeft:
       status.glyph_index--;
+      if ( status.glyph_index < 0 )
+        status.glyph_index = 0;
+      event_font_update();
+      break;
+    case grKEY( 'b' ):
+      status.use_bitmap = !status.use_bitmap;
       event_font_update();
       break;
     case grKEY( 'f' ):
@@ -256,6 +329,11 @@
     case grKey4:
       status.optimization_mode = 3;
       event_font_update();
+      break;
+    case grKEY( '?' ):
+    case grKEY( '/' ):
+    case grKeyF1:
+      event_help();
       break;
     default:
         break;
@@ -441,8 +519,7 @@
   main( int     argc,
         char**  argv )
   {
-    FT_Error  error  = FT_Err_Ok;
-	int       flip_y = 0;
+    FT_Error  error = FT_Err_Ok;
 
 
     if ( argc != 3 )
@@ -459,11 +536,6 @@
       printf( "Failed to create FTDemo_Handle\n" );
       goto Exit;
     }
-
-	#ifdef __linux__
-	  flip_y = 1;
-	  FT_CALL( FT_Property_Set( handle->library, "sdf", "flip_y", &flip_y ) );
-	#endif
 
     display = FTDemo_Display_New( NULL, "800x600" );
 

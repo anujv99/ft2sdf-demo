@@ -531,14 +531,14 @@ LRESULT CALLBACK Message_Process( HWND handle, UINT mess,
       /*                                                               */
       surface = ((LPCREATESTRUCT)lParam)->lpCreateParams;
 
-      SetProp( handle, (LPCSTR)(LONG)ourAtom, surface );
+      SetProp( handle, MAKEINTATOM( ourAtom ), surface );
     }
     else
     {
       /* for other calls, we retrieve the surface handle from the window */
       /* property.. ugly, isn't it ??                                    */
       /*                                                                 */
-      surface = (grWin32Surface*) GetProp( handle, (LPCSTR)(LONG)ourAtom );
+      surface = (grWin32Surface*) GetProp( handle, MAKEINTATOM( ourAtom ) );
     }
 
     switch( mess )

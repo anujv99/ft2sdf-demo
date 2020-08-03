@@ -326,6 +326,16 @@
     gr_color       = grFindColor( bitmap, 100, 100, 100, 255 );
   }
 
+  void
+  grGotobitmapColor( grBitmap*  bitmap,
+                     int        r,
+                     int        g,
+                     int        b,
+                     int        a )
+  {
+    gr_text_bitmap = bitmap;
+    gr_color       = grFindColor( bitmap, r, g, b, a );
+  }
 
   void
   grSetMargin( int  right,
