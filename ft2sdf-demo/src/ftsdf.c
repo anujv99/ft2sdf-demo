@@ -37,13 +37,13 @@
 
     FT_Bool   nearest_filtering;
 
-    FT_Int    optimization_mode;
-
     float     generation_time;
 
     FT_Bool   reconstruct;
 
     FT_Bool   use_bitmap;
+
+    FT_Bool   overlaps;
 
     /* params for reconstruction */
 
@@ -64,10 +64,10 @@
     /* x_offset          */ 0,
     /* y_offset          */ 0,
     /* nearest_filtering */ 0,
-    /* optimization_mode */ 2,
     /* generation_time   */ 0.0f,
     /* reconstruct       */ 0,
     /* use_bitmap        */ 0,
+    /* overlaps          */ 0,
     /* width             */ 0.0f,
     /* edge              */ 0.4f
   };
@@ -76,7 +76,6 @@
   write_header()
   {
     static char   header_string[512];
-    static char*  optimization_mode = NULL;
 
     sprintf( header_string, "Glyph Index: %d, Pt Size: %d, Spread: %d, Scale: %d",
              status.glyph_index, status.ptsize, status.spread, status.scale );
@@ -85,22 +84,7 @@
     sprintf( header_string, "Position Offset: %d,%d", status.x_offset, status.y_offset );
     grWriteCellString( display->bitmap, 0, 1 * HEADER_HEIGHT, header_string, display->fore_color );
 
-    switch ( status.optimization_mode ) {
-    case 1:
-      optimization_mode = "Bounding Box";
-      break;
-    case 2:
-      optimization_mode = "Subdivision";
-      break;
-    case 3:
-      optimization_mode = "Coarse Grid";
-      break;
-    default:
-      optimization_mode = "None";
-      break;
-    }
-
-    sprintf( header_string, "Optimization: %s [SDF Generated in: %.0f ms, From: %s]", optimization_mode, status.generation_time,
+    sprintf( header_string, "SDF Generated in: %.0f ms, From: %s", status.generation_time,
              status.use_bitmap ? "Bitmap" : "Outline" );
     grWriteCellString( display->bitmap, 0, 2 * HEADER_HEIGHT, header_string, display->fore_color );
 
@@ -123,7 +107,7 @@
 
     FT_CALL( FT_Property_Set( handle->library, "bsdf", "spread", &status.spread ) );
     FT_CALL( FT_Property_Set( handle->library, "sdf", "spread", &status.spread ) );
-    FT_CALL( FT_Property_Set( handle->library, "sdf", "optimization", &status.optimization_mode ) );
+    FT_CALL( FT_Property_Set( handle->library, "sdf", "overlaps", &status.overlaps ) );
 
     FT_CALL( FT_Set_Pixel_Sizes( status.face, 0, status.ptsize ) );
     FT_CALL( FT_Load_Glyph( status.face, status.glyph_index, FT_LOAD_DEFAULT ) );
@@ -192,12 +176,7 @@
     grLn();
     grWriteln( "  f                  : Toggle between bilinear/nearest filtering" );
     grLn();
-    grWriteln( "Optimization Modes" );
-    grWriteln( "------------------" );
-    grWriteln( "  1                  : No Optimization" );
-    grWriteln( "  2                  : Bounding Box" );
-    grWriteln( "  3                  : Subdivision" );
-    grWriteln( "  4                  : Coarse Grid" );
+    grWriteln( "  m                  : Toggle overlapping support" );
     grLn();
     grWriteln( "Reconstructing Image from SDF" );
     grWriteln( "-----------------------------" );
@@ -313,20 +292,8 @@
     case grKEY( 'w' ):
       status.y_offset += speed;
       break;
-    case grKey1:
-      status.optimization_mode = 0;
-      event_font_update();
-      break;
-    case grKey2:
-      status.optimization_mode = 1;
-      event_font_update();
-      break;
-    case grKey3:
-      status.optimization_mode = 2;
-      event_font_update();
-      break;
-    case grKey4:
-      status.optimization_mode = 3;
+    case grKEY( 'm' ):
+      status.overlaps = !status.overlaps;
       event_font_update();
       break;
     case grKEY( '?' ):
